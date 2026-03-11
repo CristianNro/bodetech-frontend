@@ -45,6 +45,8 @@ export default function Cellars() {
         },
       });
 
+      console.log("Cellars loaded:", data);
+
       setCellars(Array.isArray(data) ? data : data.cellars || []);
     } catch (error) {
       console.log(

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   Text,
   Pressable,
@@ -11,8 +11,8 @@ import {
   TouchableOpacity,
   Alert,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { API } from "../src/api/client";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -29,29 +29,22 @@ export default function Cellars() {
   const [selectedCellar, setSelectedCellar] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    load();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [])
+  );
 
   async function load() {
     try {
       setLoading(true);
 
-      const token = await AsyncStorage.getItem("access_token");
-
-      const { data } = await API.get("/cellars", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      console.log("Cellars loaded:", data);
-
+      const { data } = await API.get("/cellars");
       setCellars(Array.isArray(data) ? data : data.cellars || []);
     } catch (error) {
       console.log(
         "Error loading cellars:",
-        error?.response?.data || error.message || error
+        error?.response?.data || error?.message || error
       );
       setCellars([]);
     } finally {
@@ -69,17 +62,9 @@ export default function Cellars() {
       setCreating(true);
       setCreateError("");
 
-      const token = await AsyncStorage.getItem("access_token");
-
-      await API.post(
-        "/cellars",
-        { name: newCellarName.trim() },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      await API.post("/cellars", {
+        name: newCellarName.trim(),
+      });
 
       setModalVisible(false);
       setNewCellarName("");
@@ -87,7 +72,7 @@ export default function Cellars() {
     } catch (error) {
       console.log(
         "Error creating cellar:",
-        error?.response?.data || error.message || error
+        error?.response?.data || error?.message || error
       );
       setCreateError("No se pudo crear la bodega");
     } finally {
@@ -101,39 +86,6 @@ export default function Cellars() {
     setCreateError("");
   }
 
-  async function deleteCellar(cellarId, cellarName) {
-    Alert.alert(
-      "Eliminar bodega",
-      `¿Seguro que querés eliminar "${cellarName}"? Esta acción no se puede deshacer.`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const token = await AsyncStorage.getItem("access_token");
-
-              await API.delete(`/cellars/${cellarId}`, {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-              });
-
-              await load();
-            } catch (error) {
-              console.log(
-                "Error deleting cellar:",
-                error?.response?.data || error.message || error
-              );
-              Alert.alert("Error", "No se pudo eliminar la bodega");
-            }
-          },
-        },
-      ]
-    );
-  }
-
   function openActionsModal(cellar) {
     setSelectedCellar(cellar);
     setActionsModalVisible(true);
@@ -144,32 +96,44 @@ export default function Cellars() {
     setActionsModalVisible(false);
   }
 
-  async function deleteCellar() {
+  function confirmDeleteCellar() {
+    if (!selectedCellar?.cellar_id) return;
+
+    Alert.alert(
+      "Eliminar bodega",
+      `¿Seguro que querés eliminar "${selectedCellar.name}"? Esta acción no se puede deshacer.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: deleteSelectedCellar,
+        },
+      ]
+    );
+  }
+
+  async function deleteSelectedCellar() {
     if (!selectedCellar?.cellar_id) return;
 
     try {
       setDeleting(true);
 
-      const token = await AsyncStorage.getItem("access_token");
-
-      await API.delete(`/cellars/${selectedCellar.cellar_id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      await API.delete(`/cellars/${selectedCellar.cellar_id}`);
 
       closeActionsModal();
       await load();
     } catch (error) {
       console.log(
         "Error deleting cellar:",
-        error?.response?.data || error.message || error
+        error?.response?.data || error?.message || error
       );
       Alert.alert("Error", "No se pudo eliminar la bodega");
     } finally {
       setDeleting(false);
     }
   }
+
 
   return (
     <LinearGradient
@@ -346,7 +310,7 @@ export default function Cellars() {
                     {
                       text: "Eliminar",
                       style: "destructive",
-                      onPress: deleteCellar,
+                      onPress: confirmDeleteCellar,
                     },
                   ]
                 )

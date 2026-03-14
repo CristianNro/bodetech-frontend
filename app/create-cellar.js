@@ -28,16 +28,9 @@ export default function CreateCellar() {
       setLoading(true);
       setError("");
 
-      const token = await AsyncStorage.getItem("access_token");
-
       await API.post(
         "/cellars",
-        { name: name.trim() },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { name: name.trim() }
       );
 
       router.push("/cellars");

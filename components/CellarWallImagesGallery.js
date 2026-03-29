@@ -76,12 +76,37 @@ export default function CellarWallImagesGallery({
     return () => clearTimeout(timeout);
   }, [images, selectedIndex, SNAP_INTERVAL, hasAutoCentered, containerWidth]);
 
-  function handleMomentumEnd(event) {
-    const offsetX = event.nativeEvent.contentOffset.x;
+  function getIndexFromOffset(offsetX) {
     const index = Math.round(offsetX / SNAP_INTERVAL);
-    const safeIndex = Math.max(0, Math.min(index, images.length - 1));
-    const centeredImage = images[safeIndex];
+    return Math.max(0, Math.min(index, images.length - 1));
+  }
 
+  function getIndexFromDrag(offsetX) {
+    // Snap at 25% of card width (vs default 50%) for more responsive feel
+    const fraction = offsetX / SNAP_INTERVAL;
+    const current = lastCenteredIndexRef.current;
+    if (fraction >= current + 0.15) return Math.min(images.length - 1, current + 1);
+    if (fraction <= current - 0.15) return Math.max(0, current - 1);
+    return current;
+  }
+
+  function handleMomentumEnd(event) {
+    // snapToInterval already corrected the position — only sync state
+    const safeIndex = getIndexFromOffset(event.nativeEvent.contentOffset.x);
+    const centeredImage = images[safeIndex];
+    if (centeredImage && centeredImage.image_id !== selectedImageId) {
+      onSelectImage?.(centeredImage.image_id);
+    }
+  }
+
+  function handleScrollEndDrag(event) {
+    // Slow drag with no momentum: snapToInterval won't fire, snap manually
+    const safeIndex = getIndexFromDrag(event.nativeEvent.contentOffset.x);
+    flatListRef.current?.scrollToOffset({
+      offset: safeIndex * SNAP_INTERVAL,
+      animated: true,
+    });
+    const centeredImage = images[safeIndex];
     if (centeredImage && centeredImage.image_id !== selectedImageId) {
       onSelectImage?.(centeredImage.image_id);
     }
@@ -219,10 +244,11 @@ export default function CellarWallImagesGallery({
             decelerationRate="fast"
             snapToInterval={SNAP_INTERVAL}
             snapToAlignment="start"
-            disableIntervalMomentum={false}
+            disableIntervalMomentum={true}
             bounces={false}
             scrollEventThrottle={16}
             onMomentumScrollEnd={handleMomentumEnd}
+            onScrollEndDrag={handleScrollEndDrag}
             onScroll={(event) => {
               const offsetX = event.nativeEvent.contentOffset.x;
               scrollX.setValue(offsetX);

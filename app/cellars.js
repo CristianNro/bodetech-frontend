@@ -28,6 +28,7 @@ export default function Cellars() {
   const [actionsModalVisible, setActionsModalVisible] = useState(false);
   const [selectedCellar, setSelectedCellar] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -94,32 +95,21 @@ export default function Cellars() {
   function closeActionsModal() {
     setSelectedCellar(null);
     setActionsModalVisible(false);
+    setConfirmingDelete(false);
   }
 
   function confirmDeleteCellar() {
     if (!selectedCellar?.cellar_id) return;
-
-    Alert.alert(
-      "Eliminar bodega",
-      `¿Seguro que querés eliminar "${selectedCellar.name}"? Esta acción no se puede deshacer.`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: deleteSelectedCellar,
-        },
-      ]
-    );
+    setConfirmingDelete(true);
   }
 
-  async function deleteSelectedCellar() {
-    if (!selectedCellar?.cellar_id) return;
+  async function deleteSelectedCellar(cellar) {
+    if (!cellar?.cellar_id) return;
 
     try {
       setDeleting(true);
 
-      await API.delete(`/cellars/${selectedCellar.cellar_id}`);
+      await API.delete(`/cellars/${cellar.cellar_id}`);
 
       closeActionsModal();
       await load();
@@ -145,12 +135,21 @@ export default function Cellars() {
         <View style={styles.topBar}>
           <Text style={styles.sectionTitle}>Tus bodegas</Text>
 
-          <Pressable
-            style={styles.smallCreateButton}
-            onPress={() => setModalVisible(true)}
-          >
-            <Text style={styles.smallCreateText}>＋ Nueva</Text>
-          </Pressable>
+          <View style={styles.topBarActions}>
+            <Pressable
+              style={styles.smallSecondaryButton}
+              onPress={() => router.push("/wines")}
+            >
+              <Text style={styles.smallSecondaryText}>🍷 Vinos</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.smallCreateButton}
+              onPress={() => setModalVisible(true)}
+            >
+              <Text style={styles.smallCreateText}>＋ Nueva</Text>
+            </Pressable>
+          </View>
         </View>
 
 
@@ -281,56 +280,68 @@ export default function Cellars() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{selectedCellar?.name || "Bodega"}</Text>
-            <Text style={styles.modalSubtitle}>
-              Seleccioná una acción
-            </Text>
+            {confirmingDelete ? (
+              <>
+                <Text style={styles.modalTitle}>¿Eliminar bodega?</Text>
+                <Text style={styles.modalSubtitle}>
+                  "{selectedCellar?.name}" será eliminada permanentemente. Esta acción no se puede deshacer.
+                </Text>
 
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => {
-                const id = selectedCellar?.cellar_id;
-                closeActionsModal();
-                if (id) {
-                  router.push(`/scan-wall?cellar=${id}`);
-                }
-              }}
-            >
-              <Text style={styles.actionButtonText}>Abrir bodega</Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.deleteButton]}
+                  onPress={() => deleteSelectedCellar(selectedCellar)}
+                  disabled={deleting}
+                >
+                  {deleting ? (
+                    <ActivityIndicator color="#F5F1E9" />
+                  ) : (
+                    <Text style={styles.deleteButtonText}>Sí, eliminar</Text>
+                  )}
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.actionButton, styles.deleteButton]}
-              onPress={() =>
-                Alert.alert(
-                  "Eliminar bodega",
-                  `¿Seguro que querés eliminar "${selectedCellar?.name}"?`,
-                  [
-                    { text: "Cancelar", style: "cancel" },
-                    {
-                      text: "Eliminar",
-                      style: "destructive",
-                      onPress: confirmDeleteCellar,
-                    },
-                  ]
-                )
-              }
-              disabled={deleting}
-            >
-              {deleting ? (
-                <ActivityIndicator color="#F5F1E9" />
-              ) : (
-                <Text style={styles.deleteButtonText}>Eliminar bodega</Text>
-              )}
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => setConfirmingDelete(false)}
+                  disabled={deleting}
+                >
+                  <Text style={styles.cancelButtonText}>Cancelar</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>{selectedCellar?.name || "Bodega"}</Text>
+                <Text style={styles.modalSubtitle}>
+                  Seleccioná una acción
+                </Text>
 
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={closeActionsModal}
-              disabled={deleting}
-            >
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => {
+                    const id = selectedCellar?.cellar_id;
+                    closeActionsModal();
+                    if (id) {
+                      router.push(`/scan-wall?cellar=${id}`);
+                    }
+                  }}
+                >
+                  <Text style={styles.actionButtonText}>Abrir bodega</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.deleteButton]}
+                  onPress={confirmDeleteCellar}
+                >
+                  <Text style={styles.deleteButtonText}>Eliminar bodega</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={closeActionsModal}
+                >
+                  <Text style={styles.cancelButtonText}>Cancelar</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -387,6 +398,27 @@ const styles = StyleSheet.create({
     color: "#F5F1E9",
     fontSize: 18,
     fontWeight: "700",
+  },
+
+  topBarActions: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+
+  smallSecondaryButton: {
+    backgroundColor: "rgba(198,169,105,0.14)",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(198,169,105,0.3)",
+  },
+
+  smallSecondaryText: {
+    color: "#C6A969",
+    fontWeight: "600",
+    fontSize: 13,
   },
 
   smallCreateButton: {

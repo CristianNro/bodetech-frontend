@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm:*)", "Bash(npx:*)", "Bash(git:*)",
+      "Read(**)",
+      "Write(app/**)", "Write(components/**)", "Write(src/**)"
+    ],
+    "deny": ["Write(.env*)"]
+  }
+}

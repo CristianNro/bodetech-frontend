@@ -37,11 +37,12 @@ export default function ScanWall() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
 
   const hasImages = images.length > 0;
   const selectedSlots = currentWallData?.slots_detected || 0;
   const selectedStatus = currentWallData?.status || "unknown";
-  const displayedSlotsCount = isEditing ? draftSlots.length : selectedSlots;
+  const displayedSlotsCount = selectedSlots;
 
   useFocusEffect(
     useCallback(() => {
@@ -49,51 +50,41 @@ export default function ScanWall() {
     }, [cellar])
   );
 
-  async function deleteSelectedImage() {
+  function deleteSelectedImage() {
     if (!cellar || !selectedImageId) return;
+    setDeleteConfirmVisible(true);
+  }
 
-    Alert.alert(
-      "Eliminar imagen",
-      "¿Seguro que querés eliminar esta imagen de la bodega?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setLoading(true);
+  async function confirmDeleteImage() {
+    setDeleteConfirmVisible(false);
+    try {
+      setLoading(true);
 
-              await API.delete(`/vision/wall/${cellar}/images/${selectedImageId}`);
+      await API.delete(`/vision/wall/${cellar}/images/${selectedImageId}`);
 
-              const remainingImages = images.filter(
-                (img) => img.image_id !== selectedImageId
-              );
+      const remainingImages = images.filter(
+        (img) => img.image_id !== selectedImageId
+      );
 
-              if (remainingImages.length === 0) {
-                setImages([]);
-                setSelectedImageId(null);
-                setCurrentWallData(null);
-              } else {
-                const nextImageId = remainingImages[0].image_id;
-                await refreshWallData(nextImageId);
-              }
-            } catch (error) {
-              console.log(
-                "Error eliminando imagen:",
-                error?.response?.data || error?.message || error
-              );
-              Alert.alert(
-                "Error",
-                error?.response?.data?.detail || "No se pudo eliminar la imagen"
-              );
-            } finally {
-              setLoading(false);
-            }
-          },
-        },
-      ]
-    );
+      if (remainingImages.length === 0) {
+        setImages([]);
+        setSelectedImageId(null);
+        setCurrentWallData(null);
+      } else {
+        await refreshWallData(remainingImages[0].image_id);
+      }
+    } catch (error) {
+      console.log(
+        "Error eliminando imagen:",
+        error?.response?.data || error?.message || error
+      );
+      Alert.alert(
+        "Error",
+        error?.response?.data?.detail || "No se pudo eliminar la imagen"
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function mapSlotsToDraft(slots = []) {
@@ -314,19 +305,6 @@ export default function ScanWall() {
     }
   }
 
-  function startEditing() {
-    if (!currentWallData) return;
-
-    setDraftSlots(mapSlotsToDraft(currentWallData.slots || []));
-    setDeletedSlotIds([]);
-    setHasUnsavedChanges(false);
-    setIsEditing(true);
-  }
-
-  function cancelEditing() {
-    resetEditorStateFromImage(currentWallData?.slots || []);
-  }
-
   async function saveBatchChanges() {
     try {
       if (!cellar || !selectedImageId) {
@@ -391,43 +369,21 @@ export default function ScanWall() {
                   />
 
                   <View style={styles.editorActions}>
-                    {!isEditing ? (
-                      <TouchableOpacity
-                        style={styles.primaryActionButton}
-                        onPress={() =>
-                          router.push({
-                            pathname: "/edit-wall",
-                            params: {
-                              cellar,
-                              imageId: selectedImageId,
-                            },
-                          })
-                        }
-                        disabled={loadingSelectedImage || loading || !selectedImageId}
-                      >
-                        <Text style={styles.primaryActionButtonText}>Editar slots</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <>
-                        <TouchableOpacity
-                          style={[styles.secondaryActionButton, saving && styles.buttonDisabled]}
-                          onPress={cancelEditing}
-                          disabled={saving}
-                        >
-                          <Text style={styles.secondaryActionButtonText}>Cancelar</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.primaryActionButton, saving && styles.buttonDisabled]}
-                          onPress={saveBatchChanges}
-                          disabled={saving}
-                        >
-                          <Text style={styles.primaryActionButtonText}>
-                            {saving ? "Guardando..." : "Guardar cambios"}
-                          </Text>
-                        </TouchableOpacity>
-                      </>
-                    )}
+                    <TouchableOpacity
+                      style={styles.primaryActionButton}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/edit-wall",
+                          params: {
+                            cellar,
+                            imageId: selectedImageId,
+                          },
+                        })
+                      }
+                      disabled={loadingSelectedImage || loading || !selectedImageId}
+                    >
+                      <Text style={styles.primaryActionButtonText}>Editar slots</Text>
+                    </TouchableOpacity>
                   </View>
                 </>
               ) : (
@@ -442,6 +398,38 @@ export default function ScanWall() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={deleteConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteConfirmVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Eliminar imagen</Text>
+            <Text style={styles.deleteConfirmText}>
+              ¿Seguro que querés eliminar esta imagen de la bodega? Esta acción no se puede deshacer.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.deleteConfirmButton, loading && styles.deleteConfirmButtonDisabled]}
+              onPress={confirmDeleteImage}
+              disabled={loading}
+            >
+              <Text style={styles.deleteConfirmButtonText}>Eliminar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.deleteConfirmCancelButton}
+              onPress={() => setDeleteConfirmVisible(false)}
+              disabled={loading}
+            >
+              <Text style={styles.deleteConfirmCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={uploadModalVisible}
@@ -606,5 +594,44 @@ const styles = StyleSheet.create({
     color: "#C6A969",
     fontSize: 14,
     fontWeight: "700",
+  },
+
+  deleteConfirmText: {
+    color: "#D7D0C7",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+
+  deleteConfirmButton: {
+    backgroundColor: "#8B1E2D",
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+
+  deleteConfirmButtonDisabled: {
+    opacity: 0.6,
+  },
+
+  deleteConfirmButtonText: {
+    color: "#F5F1E9",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+
+  deleteConfirmCancelButton: {
+    backgroundColor: "#2A2226",
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(198,169,105,0.2)",
+  },
+
+  deleteConfirmCancelText: {
+    color: "#F5F1E9",
+    fontWeight: "600",
   },
 });

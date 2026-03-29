@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   TouchableOpacity,
   Alert,
@@ -9,6 +10,7 @@ import {
   Image,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { API, resolveApiUrl } from "../src/api/client";
 
@@ -22,6 +24,7 @@ function mapSlotsToDraft(slots = []) {
     slot_id: slot.slot_id || null,
     temp_id: null,
     slot_index: slot.slot_index ?? 0,
+    label: slot.label ?? null,
     bbox: {
       x: slot?.bbox?.x ?? 0,
       y: slot?.bbox?.y ?? 0,
@@ -78,6 +81,7 @@ function buildBatchPayload(draftSlots, deletedSlotIds) {
     slots: draftSlots.map((slot, index) => ({
       ...(slot.slot_id ? { slot_id: slot.slot_id } : { temp_id: slot.temp_id }),
       slot_index: index,
+      label: slot.label ?? null,
       bbox: slot.bbox,
       status: slot.status || "empty",
       is_active: slot.is_active ?? true,
@@ -97,6 +101,7 @@ function createDefaultSlot(imageWidth, imageHeight, count) {
     slot_id: null,
     temp_id: `tmp-${Date.now()}-${count}`,
     slot_index: count,
+    label: null,
     bbox: { x, y, w, h },
     status: "empty",
     is_active: true,
@@ -106,6 +111,7 @@ function createDefaultSlot(imageWidth, imageHeight, count) {
 
 export default function EditWall() {
   const { cellar, imageId } = useLocalSearchParams();
+  const navigation = useNavigation();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -116,6 +122,39 @@ export default function EditWall() {
   const [selectedSlotId, setSelectedSlotId] = useState(null);
 
   const [previewWidth, setPreviewWidth] = useState(0);
+
+  const hasUnsavedChangesRef = useRef(false);
+
+  function markChanged() {
+    hasUnsavedChangesRef.current = true;
+  }
+
+  function markSaved() {
+    hasUnsavedChangesRef.current = false;
+  }
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+      if (!hasUnsavedChangesRef.current) return;
+
+      e.preventDefault();
+
+      Alert.alert(
+        "Cambios sin guardar",
+        "Tenés cambios sin guardar. ¿Querés salir de todas formas?",
+        [
+          { text: "Seguir editando", style: "cancel" },
+          {
+            text: "Salir sin guardar",
+            style: "destructive",
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+        ]
+      );
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const dragRef = useRef({
     slotKey: null,
@@ -155,6 +194,7 @@ export default function EditWall() {
       setDraftSlots(nextDraft);
       setDeletedSlotIds([]);
       setSelectedSlotId(nextDraft[0]?.slot_id || nextDraft[0]?.temp_id || null);
+      markSaved();
     } catch (error) {
       console.log(
         "Error cargando editor de pared:",
@@ -183,6 +223,7 @@ export default function EditWall() {
 
     setDraftSlots((prev) => [...prev, newSlot]);
     setSelectedSlotId(newSlot.temp_id);
+    markChanged();
   }
 
   function deleteSelectedSlot() {
@@ -212,6 +253,7 @@ export default function EditWall() {
             }
 
             setSelectedSlotId(null);
+            markChanged();
           },
         },
       ]
@@ -244,6 +286,7 @@ export default function EditWall() {
 		const dx = dxPx / scaleX;
 		const dy = dyPx / scaleY;
 
+		markChanged();
 		setDraftSlots((prev) =>
 			prev.map((slot) => {
 				if (getSlotKey(slot) !== slotKey) return slot;
@@ -347,6 +390,7 @@ export default function EditWall() {
 			nextH = MIN_H;
 		}
 
+		markChanged();
 		setDraftSlots((prev) =>
 			prev.map((slot) => {
 				if (getSlotKey(slot) !== slotKey) return slot;
@@ -383,6 +427,7 @@ export default function EditWall() {
 
 			await API.put(`/vision/wall/${cellar}/images/${imageId}/slots`, payload);
 
+			markSaved();
 			Alert.alert("Listo", "Los cambios se guardaron correctamente");
 			router.back();
 		} catch (error) {
@@ -411,6 +456,16 @@ export default function EditWall() {
   const selectedCountLabel = useMemo(() => {
     return selectedSlotId ? "1 seleccionado" : "Sin selección";
   }, [selectedSlotId]);
+
+  const selectedSlot = useMemo(
+    () => draftSlots.find((s) => getSlotKey(s) === selectedSlotId) ?? null,
+    [draftSlots, selectedSlotId]
+  );
+
+  const selectedIndex = useMemo(
+    () => draftSlots.findIndex((s) => getSlotKey(s) === selectedSlotId),
+    [draftSlots, selectedSlotId]
+  );
 
   const invalidSlotKeys = useMemo(() => {
   if (!imageData) return new Set();
@@ -455,6 +510,29 @@ export default function EditWall() {
             </Text>
             )}
         </View>
+
+        {selectedSlotId && (
+          <View style={styles.labelBar}>
+            <Text style={styles.labelBarText}>Etiqueta</Text>
+            <TextInput
+              style={styles.labelInput}
+              value={selectedSlot?.label ?? ""}
+              onChangeText={(text) => {
+                setDraftSlots((prev) =>
+                  prev.map((s) =>
+                    getSlotKey(s) === selectedSlotId
+                      ? { ...s, label: text.slice(0, 20) }
+                      : s
+                  )
+                );
+                markChanged();
+              }}
+              placeholder={selectedIndex >= 0 ? `S${selectedIndex + 1}` : ""}
+              placeholderTextColor="#A89F97"
+              maxLength={20}
+            />
+          </View>
+        )}
 
         <View
           style={styles.imageArea}
@@ -502,7 +580,7 @@ export default function EditWall() {
 											invalidSlotKeys.has(slotKey) && styles.slotLabelInvalid,
 										]}
 									>
-										S{index + 1}
+										{slot.label || `S${index + 1}`}
 									</Text>
 
 									{isSelected && (
@@ -756,6 +834,33 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   
+  labelBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+
+  labelBarText: {
+    color: "#C6A969",
+    fontSize: 13,
+    fontWeight: "600",
+    minWidth: 60,
+  },
+
+  labelInput: {
+    flex: 1,
+    backgroundColor: "#241C20",
+    borderWidth: 1,
+    borderColor: "rgba(198,169,105,0.3)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    color: "#F5F1E9",
+    fontSize: 14,
+  },
+
   invalidWarning: {
     color: "#FF8A8A",
     fontSize: 13,
